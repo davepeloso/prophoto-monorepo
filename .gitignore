@@ -1,0 +1,51 @@
+# --- OS / junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDEs ---
+.idea/
+.vscode/
+.fleet/
+.zed/
+*.swp
+*.swo
+
+# --- Workspace tooling ---
+.windsurf/
+composer-scanner/vendor/
+composer-scanner/node_modules/
+
+# --- Universal dependency dirs (applies to all packages too) ---
+**/vendor/
+**/node_modules/
+**/.phpunit.cache/
+**/.phpunit.result.cache
+
+# --- Sandbox (disposable app) ---
+/sandbox/
+!/sandbox/.env.example
+
+# --- Local env/secrets everywhere ---
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.testing
+/auth.json
+**/storage/*.key
+
+# --- Builds / runtime ---
+**/public/build/
+**/public/hot
+**/public/storage
+**/storage/pail
+**/bootstrap/ssr
+
+# --- Test images (don’t commit big binaries) ---
+/test-images/*
+!/test-images/.gitkeep
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-error.log*
