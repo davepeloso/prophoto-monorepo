@@ -118,7 +118,15 @@ class ProPhotoWorkspace
             return 0;
         }
 
-        return $this->$action();
+        return match($action) {
+            'doctor' => $this->doctor(),
+            'sandbox:fresh' => $this->sandboxFresh(),
+            'sandbox:reset' => $this->sandboxReset(),
+            'test' => $this->runTests(),
+            'refresh' => $this->refresh(),
+            'rebuild' => $this->rebuild(),
+            default => $this->unknownCommand($action)
+        };
     }
 
     private function showHelp(): int
