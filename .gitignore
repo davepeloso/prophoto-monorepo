@@ -1,51 +1,80 @@
-# --- OS / junk ---
+### Workspace / OS
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# --- IDEs ---
+### IDE
 .idea/
 .vscode/
-.fleet/
-.zed/
 *.swp
 *.swo
 
-# --- Workspace tooling ---
-.windsurf/
+# Windsurf: keep rules, ignore local state
+.windsurf/**
+!.windsurf/rules/**
+.windsurf/cache/
+.windsurf/logs/
+
+### Secrets
+**/.env
+**/.env.*
+!**/.env.example
+!sandbox-stubs/.env.stub
+
+### PHP deps (anywhere)
+**/vendor/
+**/.phpunit.cache/
+**/.phpunit.result.cache
+**/composer.lock  # optional; see note below
+
+### Node deps/build (anywhere)
+**/node_modules/
+**/public/build/
+**/public/hot
+**/.vite/
+**/dist/
+
+### Laravel runtime
+**/storage/*.key
+**/storage/logs/
+**/storage/framework/
+**/storage/app/public/
+
+### Test artifacts / big files
+test-images/*
+!test-images/.gitkeep
+
+### Tooling junk
 composer-scanner/vendor/
 composer-scanner/node_modules/
-
-# --- Universal dependency dirs (applies to all packages too) ---
+# --- Monorepo ignores (apply everywhere) ---
 **/vendor/
 **/node_modules/
 **/.phpunit.cache/
 **/.phpunit.result.cache
+**/coverage/
+**/.coverage/
+**/storage/*.key
 
-# --- Sandbox (disposable app) ---
-/sandbox/
-!/sandbox/.env.example
-
-# --- Local env/secrets everywhere ---
+# Env / secrets
 **/.env
 **/.env.*
 !**/.env.example
-!**/.env.testing
-/auth.json
-**/storage/*.key
 
-# --- Builds / runtime ---
+# Builds
 **/public/build/
 **/public/hot
 **/public/storage
-**/storage/pail
-**/bootstrap/ssr
+**/dist/
+**/.vite/
 
-# --- Test images (don’t commit big binaries) ---
-/test-images/*
-!/test-images/.gitkeep
+# OS / IDE
+.DS_Store
+**/.idea/
+**/.vscode/
+**/.fleet/
+**/.zed/
 
-# --- Logs ---
-*.log
-npm-debug.log*
-yarn-error.log*
+# Sandbox is disposable (keep stubs only)
+sandbox/
+!sandbox/.env.example

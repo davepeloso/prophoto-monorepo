@@ -1,0 +1,40 @@
+# prophoto-ingest – Windsurf Rules
+
+## What ingest is
+
+- Ingest is a professional staging + culling subsystem (proxy records + async preview generation).
+- Ingest transforms staged assets into permanent Gallery assets (one-way).
+
+## Preview lifecycle (non-negotiable)
+
+- preview_status uses the PreviewState enum (Pending, Processing, Ready, Failed).
+- Allowed transitions ONLY:
+  - pending -> processing
+  - processing -> ready|failed
+  - failed -> processing (retry)
+- No code outside ProxyImage may write raw preview_status strings.
+- ProcessPreviewJob must be idempotent and retry-safe.
+- Store failure reason and timestamps (started/completed/failed) so UI never spins forever.
+
+## Validation rules
+
+- Backend upload validation MUST enforce allowed mime types/extensions.
+- Frontend acceptedTypes is not sufficient.
+
+## Tenancy in prophoto-ingest
+- All ProxyImage / StagingImage reads and writes MUST be scoped to TenantContext::studioId().
+- All queue jobs (preview generation, EXIF extraction, thumbnail enhancement) MUST carry studio_id in the job payload.
+- Job handle() must initialize tenant context before loading models.
+
+## Data contracts
+
+- Treat toReactArray() output as an internal contract:
+  - if changing shape, do it intentionally and update tests.
+- Prefer splitting toDto() vs toReactArray() to separate domain DTO from UI-specific fields.
+
+## EXIF
+
+- EXIF extraction must use ExifTool and produce:
+  - metadata_raw (original ExifTool JSON)
+  - metadata (normalized fields)
+  - captured_at normalized timestamp (derived from DateTimeOriginal + OffsetTimeOriginal)

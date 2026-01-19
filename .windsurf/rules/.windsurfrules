@@ -1,0 +1,112 @@
+---
+trigger: always_on
+---
+# ProPhoto – Windsurf Rules (Root)
+
+## What this repo is
+
+- ProPhoto is a multi-tenant SaaS (Studios + Organizations).
+- This workspace contains:
+  - /sandbox = disposable Laravel app used for integration testing
+  - /prophoto-* = Composer packages (vertical domains + foundations) loaded into sandbox via Composer path repositories (symlink).
+- Never implement domain logic in /sandbox. Sandbox is only for wiring, configs, and integration tests.
+
+## Authoritative docs (must read before major changes)
+
+- SYSTEM.md (architecture + dependency rules)
+- DEV-OoO.md (build order / sequencing)
+- DEPENDENCIES.md (system deps like ExifTool + minimum versions)
+
+## Multi-tenancy rules (required)
+
+## Multi-tenancy (Non-negotiable)
+ProPhoto is a multi-tenant SaaS. The tenant boundary is the Studio.
+
+### Tenant entry points
+- HTTP tenancy resolution MUST run via middleware:
+  - ProPhoto\Access\Http\Middleware\ResolveTenant
+- Tenant context MUST be read from:
+  - ProPhoto\Access\Support\TenantContext
+
+### Required behavior for new code
+When creating or editing ANY of the following:
+- Models, migrations, factories, seeders
+- Controllers, FormRequests, Policies
+- Jobs, Commands, Services, Repositories
+- Queries (Eloquent/DB), listeners, scheduled tasks
+
+You MUST:
+1) Confirm tenancy is applied:
+   - For HTTP: TenantContext::studioId() must be available and used for scoping.
+   - For Jobs: pass studio_id into the job payload and initialize tenant context inside handle().
+2) Add studio_id to all tenant-owned tables and ensure it is indexed.
+3) Scope all tenant-owned reads/writes by studio_id.
+4) Never query tenant-owned tables without a studio_id constraint unless explicitly building super-admin tooling.
+
+### No new tenancy mechanisms
+Do NOT invent new ways to resolve or store tenant state.
+Always reuse ResolveTenant + TenantContext.
+If something is missing, extend these existing entry points rather than creating alternatives.
+
+## Dependency discipline (Composer packages)
+
+- Do not create circular dependencies between packages.
+- Prefer events/contracts over direct model imports between packages.
+- If a domain must reference an upstream domain, reference it ONLY in the allowed direction (per SYSTEM.md).
+- Each database table is owned by exactly one package (migrations live with owner).
+
+## Tech constraints
+
+- PHP: use PHP 8.2+ features (enums, readonly, match, etc.).
+- Tests: prefer Pest. Use Orchestra Testbench for package tests.
+- UI: Tailwind. Inertia + React exists in prophoto-ingest; follow existing patterns.
+- Static analysis/style: Pint everywhere; phpstan where already configured.
+
+## External dependencies (do not replace)
+
+- EXIF extraction MUST use ExifTool. Do not suggest PHP-native EXIF parsing as a replacement.
+- Background processing must remain queue-driven for preview generation & ingestion pipeline.
+
+## Workflow expectations
+
+- For any change touching ingest preview pipeline:
+  - enforce PreviewState enum + strict transitions
+  - ensure idempotent jobs
+  - store failure reason + timestamps
+  - add/adjust tests accordingly
+
+  - PHP `use` statements must appear only at file scope.
+  - Never place `use` inside conditionals, methods, or classes.
+  - Prefer fully-qualified class/function names for one-off conditional usage.
+
+## Git expectations
+
+You are working inside the ProPhoto workspace.
+
+Repository structure:
+- The workspace root is a coordination repo only.
+- Each prophoto-* directory is a fully independent Composer package and Git repository.
+- The sandbox/ directory is disposable and must never be committed.
+
+Git rules:
+- Never commit vendor/, node_modules/, dist/, build/, or sandbox/.
+- Each prophoto-* package must have its own .gitignore and Git history.
+- Do not create nested Git repositories inside src/, tests/, or resources/.
+- The workspace root repo should only track scripts/, docs/, and configuration files.
+
+Composer rules:
+- Path repositories are used for local development.
+- Package namespaces must match PSR-4 casing exactly.
+- Internal dependencies must use canonical package names (e.g. prophoto/gallery, never prophoto/galleries).
+
+CI/CD expectations:
+- CI should validate:
+  - composer.json consistency
+  - PSR-4 namespace casing
+  - forbidden directories are not committed
+- The sandbox app is recreated dynamically and is not part of version control.
+
+If asked to initialize or clone the repo:
+- Initialize git at the workspace root.
+- Initialize git in each prophoto-* package.
+- Apply the standard ProPhoto .gitignore templates.

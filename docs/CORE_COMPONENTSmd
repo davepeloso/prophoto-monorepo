@@ -1,0 +1,258 @@
+# Core-platform-components
+
+### Studio + tenancy core
+
+* **Studio context resolver** (how the app decides “which studio” is active)
+  * by subdomain (prophoto.davepeloso.com now, multi-tenant later)
+  * middleware: SetCurrentStudio
+* **Org context** for client users (which org they’re acting on)
+* **Impersonation** (admin → view as client/subject for testing)
+
+⠀
+
+### Identity & roles beyond “role badges”
+
+* **Role/permission model** (Spatie is fine) but you need:
+  * **contextual permissions** (user can manage *this* org/gallery but not others)
+  * a simple **policy matrix** that matches your routes/resources
+* **Invitation flow** for client team members (email invite → set password)
+
+⠀
+
+### Feature flags & settings system
+
+* StudioSettings + OrganizationSettings with a consistent API:
+  * typed accessors (avoid raw JSON usage everywhere)
+  * defaults, overrides, validation
+* Feature flags you listed become real:
+  * features.ai_portraits, features.booking, features.stripe_invoicing, etc.
+
+⠀
+⸻
+
+## Image pipeline components (this is the backbone)
+
+### Ingest/staging pipeline (end-to-end)
+
+* **Upload intake** (chunking optional)
+* **Staging batch model** (batch id, source, counts, status)
+* **EXIF normalization layer**
+  * your “contracts” should define the normalized metadata shape (DTO)
+* **Derivative generator**
+  * thumbs / previews / web / original
+* **Assignment engine**
+  * staging → gallery attach
+  * idempotent operations (safe re-run)
+* **Auto-cleanup job**
+  * deletes staging items past TTL (7 days)
+
+⠀
+
+### Storage abstraction
+
+You mention ImageKit + downloads + ZIPs. You’ll need:
+
+* StorageDriver abstraction (local dev vs ImageKit prod)
+* signed URLs + expiry
+* path conventions for originals/derivatives
+* download authorization rules (subject vs client vs admin)
+
+⠀
+
+### Bulk download system
+
+* “build ZIP” as a queued job
+* progress tracking + retry
+* temporary artifact storage + expiration cleanup
+* include: images + metadata CSV + README
+
+⠀
+⸻
+
+## Interaction & audit components (turns galleries into workflows)
+
+### Image interactions engine
+
+* ratings (per subject)
+* marketing approvals (with timestamp + IP + disclaimer acceptance)
+* comments/notes + edit requests
+* per-image interaction history
+
+⠀
+
+### Activity & audit logging
+
+You’ll regret not doing this early.
+
+* event-based activity log for:
+  * gallery actions, downloads, approvals, edits, AI requests, invoice events
+* include actor + context + metadata payload
+* surface in Filament “Activity” tab everywhere
+
+⠀
+⸻
+
+## AI portraits components (beyond the UI)
+
+### AI orchestration
+
+* model training lifecycle:
+  * training set selection + validation rules
+  * training job + status polling/webhook
+* generation requests lifecycle:
+  * rate limiting + quotas (per subject + per gallery)
+  * cost estimation + cost ledger
+* result storage + mapping to gallery/subject
+
+⠀
+
+### Cost ledger / billing for AI
+
+Even if you don’t charge now, track:
+
+* cost per training, per generation, per enhancement
+* attach costs to org/gallery/session for reporting later
+
+⠀
+⸻
+
+## Booking + calendar components
+
+### Booking workflow engine
+
+* request → review → confirm/deny/counteroffer
+* state machine (statuses you already listed)
+* message thread per booking (client ↔ studio)
+* conflict detection (calendar + existing sessions)
+
+⠀
+
+### Google Calendar integration layer
+
+* token storage + refresh strategy
+* event create/update/delete mapping
+* failure handling + resync job
+* “source of truth” decision (calendar vs app)
+
+⠀
+⸻
+
+## Invoicing + payments components
+
+### Invoice domain engine
+
+* invoice numbering strategy
+* line item sources (sessions/custom/manual)
+* tax rules & rounding rules
+* PDF renderer (HTML → PDF or a service)
+
+⠀
+
+### Stripe integration
+
+* checkout session creation
+* webhook handler + signature verification
+* payment reconciliation → invoice status transitions
+* idempotency keys on webhooks
+
+⠀
+⸻
+
+## Notification + messaging components
+
+### Notification system
+
+* email templates you listed → actual Mailable pipeline
+* notification preferences per studio/org/user
+* delivery logs + retries
+* “magic link sent” and “invoice sent” audit trail
+
+⠀
+
+### Messaging component
+
+* internal messages (admin to client)
+* optional subject messaging (or just notes) with strict permissions
+
+⠀
+⸻
+
+## Security components (must-have for magic links)
+
+### Magic link security
+
+* token format (high entropy), stored hashed
+* expiry + one-time vs reusable option
+* rate limiting on token endpoints
+* download authorization checks on every asset
+
+⠀
+
+### Abuse controls
+
+* per-token download throttling
+* watermarking hooks (future) — design now so it’s easy later
+
+⠀
+⸻
+
+## Frontend/UI system components
+
+### Shared UI component library
+
+You already listed ImageGrid/Lightbox/Uploader etc — you’ll also want:
+
+* a **design tokens** file (spacing/colors/typography)
+* a **status badge** enum mapping (single source)
+* consistent empty states / error states
+
+⠀
+
+### Upload UI: resumable + progress
+
+* if subjects/admin upload big sets, consider tus/s3 multipart later
+* for now: solid progress + server-side validation errors surfaced
+
+⠀
+⸻
+
+## Ops & dev workflow components (your multi-package reality)
+
+### Workspace master tooling (the prophoto CLI)
+
+* one interactive entrypoint (scripts/prophoto) using Laravel Prompts:
+  * sandbox fresh/reset
+  * refresh caches/assets
+  * run tests (package + sandbox)
+  * doctor checks (path repos, exiftool, etc.)
+* contracts package support (see below)
+
+⠀
+
+### Contracts layer (where it touches this app)
+
+Given your URL map, your contracts package should cover:
+
+* GalleryId, ImageId, OrganizationId, SessionId
+* AssetMetadata DTO (normalized EXIF)
+* DerivativeType enum
+* Ability/permission constants
+* events: ImageIngested, ImagesAssignedToGallery, GalleryMagicLinkGenerated, InvoicePaid, AiGenerationCompleted
+
+⠀
+⸻
+
+## The one “missing” architectural decision
+
+You should decide now whether **Admin + Client** are:
+
+* **two Filament panels** in one Laravel app (common, clean), or
+* separate apps (more ops overhead)
+
+⠀
+Your URL map suggests **two panels in one app**, plus custom Blade for subject galleries. That’s a good plan.
+
+⸻
+
+If you want the cleanest next step: tell me which packages own which domains right now (ingest, galleries, access, debug, etc.). I’ll map your URL sections to package boundaries and list exactly what belongs in **contracts** vs **implementation** so you don’t create circular dependencies.
+# prophoto/order-of-Operations

@@ -1,0 +1,3 @@
+#!/bin/bash
+# ProPhoto Master CLI Launcher
+exec "$(dirname "$0")/prophoto.php" "$@"
