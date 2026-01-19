@@ -1,5 +1,8 @@
- micro tools/audit-composer.php #!/usr/bin/env php
+#!/usr/bin/env php
 <?php
+
+declare(strict_types=1);
+
 /**
  * ProPhoto Composer Audit (monorepo)
  *
@@ -15,8 +18,6 @@
  *   php tools/audit-composer.php
  *   php tools/audit-composer.php --strict
  */
-
-declare(strict_types=1);
 
 const BASELINE_PHP = '^8.2';
 
