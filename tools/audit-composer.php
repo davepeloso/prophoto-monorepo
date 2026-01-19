@@ -143,11 +143,21 @@ foreach ($localPackages as $pkgName => $meta) {
             }
         }
 
-        // Also ensure PSR-4 path points to src/
+        // Also ensure PSR-4 path points to src/ (with Laravel-ish exceptions)
         foreach ($psr4 as $prefix => $path) {
             if (!is_string($path)) continue;
-            if (rtrim($path, "/") !== 'src') {
-                add($warnings, $pkgLabel, "PSR-4 '{$prefix}' points to '{$path}' (expected 'src/')");
+
+            $normalized = rtrim(str_replace('\\', '/', $path), '/') . '/';
+
+            $isSeederPrefix = str_ends_with($prefix, 'Database\\Seeders\\');
+            $isFactoryPrefix = str_ends_with($prefix, 'Database\\Factories\\');
+
+            $allowed = ['src/'];
+            if ($isSeederPrefix) $allowed[] = 'database/seeders/';
+            if ($isFactoryPrefix) $allowed[] = 'database/factories/';
+
+            if (!in_array($normalized, $allowed, true)) {
+                add($warnings, $pkgLabel, "PSR-4 '{$prefix}' points to '{$path}' (expected one of: " . implode(', ', $allowed) . ")");
             }
         }
     }
