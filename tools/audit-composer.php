@@ -105,6 +105,11 @@ foreach ($localPackages as $pkgName => $meta) {
         add($errors, $pkgLabel, "package name mismatch: composer name is '" . ($composer['name'] ?? '∅') . "', expected '{$expectedName}' for folder '{$pkgLabel}'");
     }
 
+    // 1b) package name must be lowercase
+    if (isset($composer['name']) && is_string($composer['name']) && $composer['name'] !== strtolower($composer['name'])) {
+        add($errors, $pkgLabel, "composer package name must be lowercase (found '{$composer['name']}')" );
+    }
+
     // 2) php constraint
     $phpReq = $composer['require']['php'] ?? null;
     if (!is_string($phpReq) || trim($phpReq) !== BASELINE_PHP) {
@@ -143,6 +148,12 @@ foreach ($localPackages as $pkgName => $meta) {
             }
         }
 
+        // Main PSR-4 prefix must map to src/
+        $mainPath = $psr4[$expectedPrefix] ?? null;
+        if (!is_string($mainPath) || rtrim(str_replace('\\','/',$mainPath),'/') . '/' !== 'src/') {
+            add($errors, $pkgLabel, "main PSR-4 '{$expectedPrefix}' must point to 'src/' (found '" . (is_string($mainPath) ? $mainPath : '∅') . "')");
+        }
+
         // Also ensure PSR-4 path points to src/ (with Laravel-ish exceptions)
         foreach ($psr4 as $prefix => $path) {
             if (!is_string($path)) continue;
@@ -163,14 +174,16 @@ foreach ($localPackages as $pkgName => $meta) {
     }
 
     // 5) internal requires reference existing local packages
+    $allowedExternal = [
+        // 'prophoto/some-external',
+    ];
     $requires = $composer['require'] ?? [];
     if (is_array($requires)) {
         foreach ($requires as $dep => $ver) {
             if (!is_string($dep)) continue;
             if (!str_starts_with($dep, 'prophoto/')) continue;
 
-            // allow laravel-ish or external prophoto packages if you want; for now CI wants local existence
-            if (!array_key_exists($dep, $localPackages)) {
+            if (!array_key_exists($dep, $localPackages) && !in_array($dep, $allowedExternal, true)) {
                 add($errors, $pkgLabel, "internal require '{$dep}' does not exist as a local package folder");
             }
         }
@@ -210,6 +223,11 @@ if ($errors) {
     echo "ERRORS (" . count($errors) . ")\n";
     foreach ($errors as $e) echo "  - {$e}\n";
     echo "\n";
+    exit(1);
+}
+
+if ($strict && $warnings) {
+    echo "STRICT MODE: warnings are treated as failures.\n";
     exit(1);
 }
 
