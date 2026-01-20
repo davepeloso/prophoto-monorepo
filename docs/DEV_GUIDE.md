@@ -202,6 +202,192 @@ Or use refresh/rebuild:
 ./scripts/prophoto refresh
 ```
 
+## Filament Admin UI Architecture
+
+### Modular but Centrally Owned
+
+ProPhoto uses a **centralized Filament panel** architecture where:
+
+- **Sandbox owns the ONE Filament Panel** at `/prophoto`
+- **Packages contribute resources/pages/widgets** via a contract interface
+- **No packages create their own panels** — everything flows through sandbox
+
+This design ensures consistent admin UI while maintaining package modularity.
+
+### How It Works
+
+#### 1. The Contract (`prophoto-contracts`)
+
+All packages implement the `RegistersFilament` interface:
+
+```php
+namespace ProPhoto\Contracts\Filament;
+
+interface RegistersFilament
+{
+    public static function register(\Filament\Panel $panel): \Filament\Panel;
+}
+```
+
+#### 2. Package Registrars
+
+Each package provides a `FilamentRegistrar` that contributes to the panel:
+
+**Example: `prophoto-access/src/Filament/FilamentRegistrar.php`**
+
+```php
+namespace ProPhoto\Access\Filament;
+
+use Filament\Panel;
+use ProPhoto\Contracts\Filament\RegistersFilament;
+
+class FilamentRegistrar implements RegistersFilament
+{
+    public static function register(Panel $panel): Panel
+    {
+        return $panel
+            ->resources([
+                RoleResource::class,
+                PermissionResource::class,
+            ])
+            ->pages([
+                PermissionMatrix::class,
+            ]);
+    }
+}
+```
+
+**Packages with Filament contributions:**
+
+- **prophoto-access**: RoleResource, PermissionResource, PermissionMatrix
+- **prophoto-debug**: IngestTracesPage, ConfigSnapshotsPage (gated by environment + permission)
+- **prophoto-ingest**: (ready for future resources)
+
+#### 3. Sandbox Panel Provider
+
+The sandbox owns the panel configuration via `ProPhotoPanelProvider`:
+
+**Location**: `sandbox/app/Providers/Filament/ProPhotoPanelProvider.php`
+
+This provider:
+- Configures the panel (path: `/prophoto`, auth, branding)
+- Discovers registrars from all packages
+- Applies them in deterministic order (alphabetical by package name)
+
+**Automatic discovery** via `FilamentRegistrar::discoverRegistrars()`:
+- Scans `prophoto-*/src/Filament/FilamentRegistrar.php`
+- Reads PSR-4 autoload mapping from `composer.json`
+- Returns array of registrar class names
+
+#### 4. Environment Gating (Debug Package)
+
+Debug pages use **dual gating**:
+
+1. **Environment check**: Only in `local`, `staging`, or `testing`
+2. **Permission check**: In production, requires `prophoto.debug.access` permission
+
+```php
+// prophoto-debug gating example
+if (!in_array(app()->environment(), ['local', 'staging', 'testing'])) {
+    if (!auth()->user()?->can('prophoto.debug.access')) {
+        return $panel; // Skip registration
+    }
+}
+```
+
+### Adding Filament Resources to a Package
+
+#### Step 1: Create Your Resources
+
+```bash
+cd prophoto-{package}
+mkdir -p src/Filament/Resources
+# Create Resource/Page/Widget classes
+```
+
+#### Step 2: Create FilamentRegistrar
+
+**File**: `src/Filament/FilamentRegistrar.php`
+
+```php
+<?php
+
+namespace ProPhoto\YourPackage\Filament;
+
+use Filament\Panel;
+use ProPhoto\Contracts\Filament\RegistersFilament;
+
+class FilamentRegistrar implements RegistersFilament
+{
+    public static function register(Panel $panel): Panel
+    {
+        // Defensive check
+        if (!class_exists(Panel::class)) {
+            return $panel;
+        }
+
+        return $panel
+            ->resources([
+                YourResource::class,
+            ])
+            ->pages([
+                YourPage::class,
+            ]);
+    }
+}
+```
+
+#### Step 3: Test in Sandbox
+
+```bash
+./scripts/prophoto sandbox:fresh  # Rebuilds sandbox with all registrars
+cd sandbox
+php artisan serve
+# Visit http://localhost:8000/prophoto
+```
+
+Your resources should appear in the Filament panel automatically.
+
+### Verification
+
+Run the doctor command to verify Filament setup:
+
+```bash
+./scripts/prophoto doctor
+```
+
+**Checks:**
+- ✅ Filament installed in sandbox
+- ✅ Spatie Permission installed
+- ✅ ProPhotoPanelProvider registered
+- ✅ Filament registrars discoverable (access, ingest, debug)
+
+### Key Rules
+
+1. **Never create a Panel in a package** — sandbox owns the one panel
+2. **Always use the contract** — implement `RegistersFilament`
+3. **Be defensive** — check `class_exists(Panel::class)` before registering
+4. **Gate debug/admin features** — use environment + permission checks
+5. **Use discovery** — registrars are auto-discovered, no manual wiring needed
+
+### Accessing the Admin Panel
+
+After running `sandbox:fresh`:
+
+```bash
+cd sandbox
+php artisan serve
+```
+
+Visit: **http://localhost:8000/prophoto**
+
+Login with default Laravel user or create one:
+
+```bash
+php artisan tinker
+>>> User::factory()->create(['email' => 'admin@example.com']);
+```
+
 ## Understanding the Workspace
 
 ### Directory Structure

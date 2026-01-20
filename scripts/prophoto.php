@@ -174,6 +174,10 @@ class ProPhotoWorkspace
             'Path Repositories' => fn() => $this->checkPathRepositories(),
             'Symlinks Active' => fn() => $this->checkSymlinks(),
             'Package Cleanliness' => fn() => $this->checkPackageCleanliness(),
+            'Filament Installed' => fn() => $this->checkFilamentInstalled(),
+            'Spatie Permission' => fn() => $this->checkSpatiePermission(),
+            'Panel Provider' => fn() => $this->checkPanelProvider(),
+            'Filament Registrars' => fn() => $this->checkFilamentRegistrars(),
         ];
 
         $results = [];
@@ -314,6 +318,101 @@ class ProPhotoWorkspace
         ];
     }
 
+    private function checkFilamentInstalled(): array
+    {
+        $composerLock = $this->sandboxDir . '/composer.lock';
+        if (!file_exists($composerLock)) {
+            return ['pass' => false, 'message' => 'composer.lock not found'];
+        }
+
+        $content = json_decode(file_get_contents($composerLock), true);
+        $packages = $content['packages'] ?? [];
+
+        foreach ($packages as $package) {
+            if ($package['name'] === 'filament/filament') {
+                $version = $package['version'] ?? 'unknown';
+                return ['pass' => true, 'message' => $version];
+            }
+        }
+
+        return ['pass' => false, 'message' => 'Not installed'];
+    }
+
+    private function checkSpatiePermission(): array
+    {
+        $composerLock = $this->sandboxDir . '/composer.lock';
+        if (!file_exists($composerLock)) {
+            return ['pass' => false, 'message' => 'composer.lock not found'];
+        }
+
+        $content = json_decode(file_get_contents($composerLock), true);
+        $packages = $content['packages'] ?? [];
+
+        foreach ($packages as $package) {
+            if ($package['name'] === 'spatie/laravel-permission') {
+                $version = $package['version'] ?? 'unknown';
+                return ['pass' => true, 'message' => $version];
+            }
+        }
+
+        return ['pass' => false, 'message' => 'Not installed'];
+    }
+
+    private function checkPanelProvider(): array
+    {
+        $providerPath = $this->sandboxDir . '/app/Providers/Filament/ProPhotoPanelProvider.php';
+        $exists = file_exists($providerPath);
+
+        if (!$exists) {
+            return ['pass' => false, 'message' => 'ProPhotoPanelProvider not found'];
+        }
+
+        // Check if it's registered in config/app.php
+        $appConfig = $this->sandboxDir . '/bootstrap/providers.php';
+        if (!file_exists($appConfig)) {
+            // Laravel 11+ uses bootstrap/providers.php
+            $appConfig = $this->sandboxDir . '/config/app.php';
+        }
+
+        if (!file_exists($appConfig)) {
+            return ['pass' => true, 'message' => 'Found (registration unknown)'];
+        }
+
+        $content = file_get_contents($appConfig);
+        $registered = str_contains($content, 'ProPhotoPanelProvider');
+
+        return [
+            'pass' => $registered,
+            'message' => $registered ? 'Registered' : 'Found but not registered'
+        ];
+    }
+
+    private function checkFilamentRegistrars(): array
+    {
+        $registrars = [
+            'prophoto-access' => $this->baseDir . '/prophoto-access/src/Filament/FilamentRegistrar.php',
+            'prophoto-ingest' => $this->baseDir . '/prophoto-ingest/src/Filament/FilamentRegistrar.php',
+            'prophoto-debug' => $this->baseDir . '/prophoto-debug/src/Filament/FilamentRegistrar.php',
+        ];
+
+        $found = [];
+        $missing = [];
+
+        foreach ($registrars as $package => $path) {
+            if (file_exists($path)) {
+                $found[] = $package;
+            } else {
+                $missing[] = $package;
+            }
+        }
+
+        $pass = count($missing) === 0;
+        return [
+            'pass' => $pass,
+            'message' => $pass ? implode(', ', $found) : 'Missing: ' . implode(', ', $missing)
+        ];
+    }
+
     // =========================================================================
     // SANDBOX:FRESH - Destructive sandbox recreation
     // =========================================================================
@@ -341,9 +440,14 @@ class ProPhotoWorkspace
             'Creating Laravel app' => fn() => $this->exec("cd {$this->baseDir} && composer create-project laravel/laravel sandbox --prefer-dist --no-interaction --quiet"),
             'Adding path repositories' => fn() => $this->addPathRepositories(),
             'Requiring local packages' => fn() => $this->exec("cd {$this->sandboxDir} && composer require prophoto/contracts:@dev prophoto/access:@dev prophoto/ingest:@dev prophoto/debug:@dev --no-scripts"),
+            'Installing Filament' => fn() => $this->exec("cd {$this->sandboxDir} && composer require filament/filament:^3.0 --no-scripts"),
+            'Installing Spatie Permission' => fn() => $this->exec("cd {$this->sandboxDir} && composer require spatie/laravel-permission:^6.0 --no-scripts"),
+            'Copying stubs (Panel + config)' => fn() => $this->copyStubs(),
             'Copying .env template' => fn() => $this->setupEnv(),
             'Publishing migrations' => fn() => $this->publishByProfile('sandbox:fresh'),
+            'Publishing Spatie migrations' => fn() => $this->exec("cd {$this->sandboxDir} && php artisan vendor:publish --provider=\"Spatie\Laravel\Permission\PermissionServiceProvider\" --tag=\"permission-migrations\""),
             'Running migrations' => fn() => $this->exec("cd {$this->sandboxDir} && php artisan migrate --force"),
+            'Optimizing autoload' => fn() => $this->exec("cd {$this->sandboxDir} && composer dump-autoload -o"),
             'Installing npm packages' => fn() => $this->exec("cd {$this->sandboxDir} && npm install --silent"),
             'Building assets' => fn() => $this->exec("cd {$this->sandboxDir} && npm run build"),
         ];
@@ -382,6 +486,44 @@ class ProPhotoWorkspace
         }
 
         return '.env configured';
+    }
+
+    private function copyStubs(): string
+    {
+        if ($this->dryRun) {
+            return 'Would copy stubs';
+        }
+
+        $stubsDir = $this->baseDir . '/sandbox-stubs';
+        $copied = [];
+
+        // Copy Panel Provider
+        $panelProviderSrc = $stubsDir . '/app/Providers/Filament/ProPhotoPanelProvider.php';
+        $panelProviderDest = $this->sandboxDir . '/app/Providers/Filament/ProPhotoPanelProvider.php';
+
+        if (file_exists($panelProviderSrc)) {
+            @mkdir(dirname($panelProviderDest), 0755, true);
+            copy($panelProviderSrc, $panelProviderDest);
+            $copied[] = 'ProPhotoPanelProvider';
+        }
+
+        // Register provider in bootstrap/providers.php (Laravel 11+)
+        $providersFile = $this->sandboxDir . '/bootstrap/providers.php';
+        if (file_exists($providersFile)) {
+            $providersContent = file_get_contents($providersFile);
+
+            // Add provider if not already present
+            if (!str_contains($providersContent, 'ProPhotoPanelProvider')) {
+                // Find the return [ ... ] array and add our provider
+                $pattern = '/(return\s*\[\s*)/';
+                $replacement = "$1\n        App\\Providers\\Filament\\ProPhotoPanelProvider::class,";
+                $providersContent = preg_replace($pattern, $replacement, $providersContent);
+                file_put_contents($providersFile, $providersContent);
+                $copied[] = 'registered';
+            }
+        }
+
+        return implode(', ', $copied) ?: 'No stubs';
     }
 
     // =========================================================================
